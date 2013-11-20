@@ -1,6 +1,5 @@
 // PUSH-RELABEL-Algorithmus (Goldberg-Tarjan)
 #include "wgraph.h"
-#include <algorithm>
 
 using namespace std;
 
