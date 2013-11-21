@@ -3,6 +3,32 @@
 
 using namespace std;
 
+vector<Graph::EdgeId> updatelegaledges(Weighted_Graph g, Graph::NodeId v,int flow[],int dm[])
+{
+      vector<Graph::EdgeId> legaledges;
+      for(int i=0;i!=g.get_node(v).out_edges().size();i++)
+      {
+            Graph::EdgeId e=g.get_node(v).out_edges()[i];
+            Graph::NodeId w=g.get_edge(e).get_head();
+
+            //e noch im Residualgraph?
+            if((dm[v]==dm[w]+1) && (g._weight[e]-flow[e]>0))
+                 legaledges.push_back(e);
+      }
+
+      for(int i=0;i!=g.get_node(v).in_edges().size();i++)
+      {
+            Graph::EdgeId e=g.get_node(v).in_edges()[i];
+            Graph::NodeId w=g.get_edge(e).get_tail();
+
+            //e noch im Residualgraph?
+            if((dm[v]==dm[w]+1) && flow[e]>0)
+                  legaledges.push_back(e);
+      }
+
+      return legaledges;
+}
+
 int main(int argc, char* argv[])
 {
       if (argc > 1) 
@@ -65,16 +91,16 @@ int main(int argc, char* argv[])
             //eigentlicher Alg.
             while(maxlevel!=0 || !level[0].empty())
             {
-                  for(int j=0;j<=maxlevel;j++)
+                /*  for(int j=0;j<=maxlevel;j++)
                   {
                         cout << "level "<<j<< " : ";
                   for (int i=0;i!=level[j].size();i++)
                         cout << level[j][i] << " ";
                   cout << "\n";
-                  }
+                  }*/
                   Graph::NodeId v=level[maxlevel].back();
                   level[maxlevel].pop_back();
-                  cout << v << " gewählt, level "<< dm[v] << " edges " << legaledges[v].size() << "\n";
+               //   cout << v << " gewählt, level "<< dm[v] << " edges " << legaledges[v].size() << "\n";
 
                   if(active[v])
                   {
@@ -84,73 +110,49 @@ int main(int argc, char* argv[])
                               Graph::EdgeId e=legaledges[v].back();
                               legaledges[v].pop_back();
 
-                              Graph::NodeId u=g.get_edge(e).get_tail();
-                              Graph::NodeId w=g.get_edge(e).get_head();
+                              Graph::NodeId w;
 
                               //Falls e keine Rückkante im Residualgraph
+                              int change,res;
                               if(!backwards[v][e])
                               {
-                                    int change=min(int(g._weight[e]-flow[e]),excess[v]);
-            
-                                    flow[e]+=change;
-
-                                    excess[v]-=change;
-                                    excess[w]+=change;
-
-                                    //e noch im Residualgraph vorhanden
-                                    if(g._weight[e]-flow[e]>0)
-                                          legaledges[v].push_back(e);
-
-                                    cout << "aug von " << v << " nach " << w << " um " << change << " flow jetzt: "<< flow[e] << " excess " << excess[v] << "-" << excess[w] <<"\n";
-
-                                    if(!active[w] && excess[w]>0 && w>1)
-                                    {
-                                    maxlevel=min(dm[v],maxlevel);
-                                    level[dm[w]].push_back(w);
-                                    active[w]=1;
-                                    cout << "aktiviere " << w << " level " << dm[w] << "\n";
-                                    }
-
+                                    change=min(int(g._weight[e]-flow[e]),excess[v]);
+                                    res=change;
+                                    w=g.get_edge(e).get_head();
                               }
                               //e ist Rückkante im Residualgraph
                               else
                               {
-                                    int change=min(flow[e],excess[v]);
-
-                                    flow[e]-=change;
-
-                                    excess[v]-=change;
-                                    excess[u]+=change;
-                                    cout << "aug von " << v << " nach " << u << " um " << change << " flow jetzt: "<< flow[e] << " excess " << excess[v] << "-" << excess[u] << "\n";
-                                    //e noch vorhanden
-                                    if(flow[e]>0)
-                                          legaledges[v].push_back(e);
-
-                                    if(!active[u] && excess[u]>0 && u>1)
-                                    {
-                                    maxlevel=min(dm[u],maxlevel);
-                                    level[dm[u]].push_back(u);
-                                    active[u]=1;
-                                    cout << "aktiviere " << u << " level " << dm[u] << "\n";
-                                    }
+                                    change=-min(flow[e],excess[v]);
+                                    res=-change;
+                                    w=g.get_edge(e).get_tail();
                               }
 
-                              //prüfe ob neue aktive Knoten entstanden sind
+                              flow[e]+=change;
+
+                              excess[v]-=res;
+                              excess[w]+=res;
+
+                              //e noch im Residualgraph vorhanden
+                              if(g._weight[e]-flow[e]>0 && flow[e]!=0)
+                                    legaledges[v].push_back(e);
+
+                              if(excess[w]>0 && w>1 && !active[w])
+                              {
+                                    active[w]=1;
+                                    level[dm[w]].push_back(w);
+                                    //legaledges[w]=updatelegaledges(g,w,flow,dm);
+                              }
+
                               if(excess[v]>0)
-                                    level[dm[v]].push_back(v);
- 
-                              //falls Knoten inaktiv geworden sind.
-                              if(active[u] && excess[u]<=0 && u>1)
-                              {
-                                    cout << "deaktiviere " << u << "\n";
-                                    active[u]=0;
-                              }
+                                          level[dm[v]].push_back(v);
+                                    else
+                                          active[v]=0;
                               
-                              if(active[w] && excess[w]<=0 && w>1)
-                              {
-                                    cout << "deaktiviere " << w << "\n";
+                              if(excess[w]<=0 && w>1)
+                              {     
                                     active[w]=0;
-                              }
+                              }                          
                               
                         }
                         //RELABEL
@@ -185,48 +187,13 @@ int main(int argc, char* argv[])
 
                               //legal edges aktualisieren
                               //alte Kanten könnten nicht mehr erlaubt sein
-                              legaledges[v].clear();
-
-                              for(int i=0;i!=g.get_node(v).out_edges().size();i++)
-                              {
-                                    Graph::EdgeId e=g.get_node(v).out_edges()[i];
-                                    Graph::NodeId w=g.get_edge(e).get_head();
-
-                                    for(int j=0;j<legaledges[w].size();j++)
-                                    {
-                                          if(legaledges[w][j]==e && dm[w]!=dm[v]+1)
-                                          {
-                                                legaledges[w].erase(legaledges[w].begin()+j);
-                                                j--;
-                                          }
-
-                                    }
-
-                                    //e noch im Residualgraph?
-                                    if((dm[v]==dm[w]+1) && (g._weight[e]-flow[e]>0))
-                                          legaledges[v].push_back(e);
-                              }
+                              legaledges[v]=updatelegaledges(g,v,flow,dm);
+                              /*for(int i=0;i!=g.get_node(v).out_edges().size();i++)
+                                    legaledges[g.get_edge(g.get_node(v).out_edges()[i]).get_head()]=updatelegaledges(g,g.get_edge(g.get_node(v).out_edges()[i]).get_head(),flow,dm);
 
                               for(int i=0;i!=g.get_node(v).in_edges().size();i++)
-                              {
-                                    Graph::EdgeId e=g.get_node(v).in_edges()[i];
-                                    Graph::NodeId w=g.get_edge(e).get_tail();
-
-                                    for(int j=0;j<legaledges[w].size();j++)
-                                    {
-                                          if(legaledges[w][j]==e && dm[w]!=dm[v]+1)
-                                          {
-                                                legaledges[w].erase(legaledges[w].begin()+j);
-                                                j--;
-                                          }
-
-                                    }
-
-                                    //e noch im Residualgraph?
-                                    if((dm[v]==dm[w]+1) && flow[e]>0)
-                                          legaledges[v].push_back(e);
-                              }
-                        }
+                                    legaledges[g.get_edge(g.get_node(v).in_edges()[i]).get_tail()]=updatelegaledges(g,g.get_edge(g.get_node(v).in_edges()[i]).get_tail(),flow,dm);
+                        */}
                   }
                   while(level[maxlevel].empty() && maxlevel>0)
                         maxlevel--;            
