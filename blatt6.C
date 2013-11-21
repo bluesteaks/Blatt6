@@ -10,46 +10,46 @@ int main(int argc, char* argv[])
             Weighted_Graph g(argv[1],1);
 
             //flow Fluss, dm Distanzmarker, excess Überschuss, backwards zeigt an ob Kante oder Rückkante
-            int flow[g.num_edges()], dm[g.num_nodes()], excess[g.num_nodes()],backwards[g.num_edges()], maxlevel;
+            int flow[g.num_edges()], dm[g.num_nodes()], excess[g.num_nodes()],/*backwards[g.num_edges()]*/ maxlevel;
             //residualback Residualkap. der Rückkante, active zeigt an ob Knoten aktiv
-            int residual[g.num_edges()],residualback[g.num_edges()], active[g.num_nodes()];
+            int active[g.num_nodes()];
 
             //level speichert pro dm-wert die aktiven Knoten
+            vector<int> backwards[g.num_edges()];
             vector<Graph::NodeId> level[2*g.num_nodes()];
             vector<Graph::EdgeId> legaledges[g.num_nodes()];
 
 
             //Distanzmarker und Fluss initialisieren
-            dm[0]=g.num_nodes();
-            excess[0]=0;
-            active[0]=0;
-
             maxlevel=0;
 
-            for (int i=1;i<g.num_nodes();i++)
+            for (int i=0;i<g.num_nodes();i++)
             {
                   active[i]=0;
             	dm[i]=0;
                   excess[i]=0;
+                  for(int j=0;j<g.num_edges();j++)
+                        backwards[i].push_back(0);
             }
+
+            dm[0]=g.num_nodes();
 
             //Für jede Kante Fluss, Residualkap. etc. initialisieren
             for (int i=0;i<g.num_edges();i++)
             {
-                  residual[i]=g._weight[i];
-                  residualback[i]=0;
-                  backwards[i]=0;
 
                   Graph::EdgeId v=g.get_edge(i).get_tail();
                   Graph::EdgeId w=g.get_edge(i).get_head();
+
+                  backwards[v][i]=0;
+                  backwards[w][i]=1;
 
                   //von v ausgehende Kanten saturieren
                   if(v==0)
                   {
                         flow[i]=g._weight[i];
-                        residual[i]-=g._weight[i];
-                        residualback[i]+=g._weight[i];
                         excess[w]+=g._weight[i];
+                        excess[0]-=g._weight[i];
 
                         //neue aktive Knoten finden
                         if(w>1 && excess[w]>0 && !active[w])
@@ -65,148 +65,186 @@ int main(int argc, char* argv[])
             //eigentlicher Alg.
             while(maxlevel!=0 || !level[0].empty())
             {
+                  for(int j=0;j<=maxlevel;j++)
+                  {
+                        cout << "level "<<j<< " : ";
+                  for (int i=0;i!=level[j].size();i++)
+                        cout << level[j][i] << " ";
+                  cout << "\n";
+                  }
                   Graph::NodeId v=level[maxlevel].back();
                   level[maxlevel].pop_back();
-                  active[v]=0;
-                              
-                  //PUSH
-                  if(!legaledges[v].empty())
+                  cout << v << " gewählt, level "<< dm[v] << " edges " << legaledges[v].size() << "\n";
+
+                  if(active[v])
                   {
-                        Graph::EdgeId e=legaledges[v].back();
-                        legaledges[v].pop_back();
-
-                        Graph::NodeId u=g.get_edge(e).get_tail();
-                        Graph::NodeId w=g.get_edge(e).get_head();
-
-                        //Falls e keine Rückkante im Residualgraph
-                        if(!backwards[e])
+                        //PUSH
+                        if(!legaledges[v].empty())
                         {
-                              int change=min(residual[e],excess[v]);
-      
-                              flow[e]+=change;
+                              Graph::EdgeId e=legaledges[v].back();
+                              legaledges[v].pop_back();
 
-                              residual[e]-=change;
-                              residualback[e]+=change;
+                              Graph::NodeId u=g.get_edge(e).get_tail();
+                              Graph::NodeId w=g.get_edge(e).get_head();
 
-                              excess[v]-=change;
-                              excess[w]+=change;
+                              //Falls e keine Rückkante im Residualgraph
+                              if(!backwards[v][e])
+                              {
+                                    int change=min(int(g._weight[e]-flow[e]),excess[v]);
+            
+                                    flow[e]+=change;
 
-                              //e noch im Residualgraph vorhanden
-                              if(residual[e]>0)
-                                    legaledges[v].push_back(e);
+                                    excess[v]-=change;
+                                    excess[w]+=change;
+
+                                    //e noch im Residualgraph vorhanden
+                                    if(g._weight[e]-flow[e]>0)
+                                          legaledges[v].push_back(e);
+
+                                    cout << "aug von " << v << " nach " << w << " um " << change << " flow jetzt: "<< flow[e] << " excess " << excess[v] << "-" << excess[w] <<"\n";
+
+                                    if(!active[w] && excess[w]>0 && w>1)
+                                    {
+                                    maxlevel=min(dm[v],maxlevel);
+                                    level[dm[w]].push_back(w);
+                                    active[w]=1;
+                                    cout << "aktiviere " << w << " level " << dm[w] << "\n";
+                                    }
+
+                              }
+                              //e ist Rückkante im Residualgraph
+                              else
+                              {
+                                    int change=min(flow[e],excess[v]);
+
+                                    flow[e]-=change;
+
+                                    excess[v]-=change;
+                                    excess[u]+=change;
+                                    cout << "aug von " << v << " nach " << u << " um " << change << " flow jetzt: "<< flow[e] << " excess " << excess[v] << "-" << excess[u] << "\n";
+                                    //e noch vorhanden
+                                    if(flow[e]>0)
+                                          legaledges[v].push_back(e);
+
+                                    if(!active[u] && excess[u]>0 && u>1)
+                                    {
+                                    maxlevel=min(dm[u],maxlevel);
+                                    level[dm[u]].push_back(u);
+                                    active[u]=1;
+                                    cout << "aktiviere " << u << " level " << dm[u] << "\n";
+                                    }
+                              }
+
+                              //prüfe ob neue aktive Knoten entstanden sind
+                              if(excess[v]>0)
+                                    level[dm[v]].push_back(v);
+ 
+                              //falls Knoten inaktiv geworden sind.
+                              if(active[u] && excess[u]<=0 && u>1)
+                              {
+                                    cout << "deaktiviere " << u << "\n";
+                                    active[u]=0;
+                              }
+                              
+                              if(active[w] && excess[w]<=0 && w>1)
+                              {
+                                    cout << "deaktiviere " << w << "\n";
+                                    active[w]=0;
+                              }
+                              
                         }
-                        //e ist Rückkante im Residualgraph
+                        //RELABEL
                         else
                         {
-                              backwards[e]=0;
-                              int change=min(residualback[e],excess[v]);
+                              int mindm=200000;
 
-                              flow[e]-=change;
-
-                              residual[e]+=change;
-                              residualback[e]-=change;
-
-                              excess[v]-=change;
-                              excess[u]+=change;
-
-                              //e noch vorhanden
-                              if(residualback[e]>0)
+                              //finde minimales dm[w] für alle Kanten (v,w) im Residualgraph
+                              for(int i=0;i!=g.get_node(v).out_edges().size();i++)
                               {
-                                    backwards[e]=1;
-                                    legaledges[v].push_back(e);
+                                    Graph::EdgeId e=g.get_node(v).out_edges()[i];
+                                    Graph::NodeId w=g.get_edge(e).get_head();
+
+                                    if(g._weight[e]-flow[e]>0)
+                                          mindm=min(mindm,dm[w]+1);
                               }
-                        }
 
-                        //prüfe ob neue aktive Knoten entstanden sind
-                        if(!active[u] && excess[u]>0 && u>1)
-                        {
-                              maxlevel=min(dm[u],maxlevel);
-                              level[dm[u]].push_back(u);
-                              active[u]=1;
-                        }
-                        if(!active[w] && excess[w]>0 && w>1)
-                        {
-                              maxlevel=min(dm[v],maxlevel);
-                              level[dm[w]].push_back(w);
-                              active[w]=1;
-                        }
-                  }
-                  //RELABEL
-                  else
-                  {
-                        int mindm=200000;
-
-                        //finde minimales dm[w] für alle Kanten (v,w) im Residualgraph
-                        for(int i=0;i!=g.get_node(v).out_edges().size();i++)
-                        {
-                              Graph::EdgeId e=g.get_node(v).out_edges()[i];
-                              Graph::NodeId w=g.get_edge(e).get_head();
-
-                              if(residual[e]>0)
-                                    mindm=min(mindm,dm[w]+1);
-                        }
-
-                        for(int i=0;i!=g.get_node(v).in_edges().size();i++)
-                        {
-                              Graph::EdgeId e=g.get_node(v).in_edges()[i];
-                              Graph::NodeId w=g.get_edge(e).get_tail();
-
-                              if(residualback[e]>0) 
-                                    mindm=min(mindm,dm[w]+1);
-                        }
-
-                        //v kommt auf neues dm-level (eventuell maximal)
-                        dm[v]=mindm;
-                        maxlevel=max(maxlevel,dm[v]);
-                        level[dm[v]].push_back(v);
-                        active[v]=1;
-
-                        //legal edges aktualisieren
-                        //alte Kanten könnten nicht mehr erlaubt sein
-                        legaledges[v].clear();
-
-                        for(int i=0;i!=g.get_node(v).out_edges().size();i++)
-                        {
-                              Graph::EdgeId e=g.get_node(v).out_edges()[i];
-                              Graph::NodeId w=g.get_edge(e).get_head();
-
-                              //e noch im Residualgraph?
-                              if((dm[v]==dm[w]+1) && residual[e]>0)
+                              for(int i=0;i!=g.get_node(v).in_edges().size();i++)
                               {
-                                    legaledges[v].push_back(e);
-                                    backwards[e]=0; //e keine Rückkante
+                                    Graph::EdgeId e=g.get_node(v).in_edges()[i];
+                                    Graph::NodeId w=g.get_edge(e).get_tail();
+
+                                    if(flow[e]>0) 
+                                          mindm=min(mindm,dm[w]+1);
                               }
-                        }
 
-                        for(int i=0;i!=g.get_node(v).in_edges().size();i++)
-                        {
-                              Graph::EdgeId e=g.get_node(v).in_edges()[i];
-                              Graph::NodeId w=g.get_edge(e).get_tail();
+                              //v kommt auf neues dm-level (eventuell maximal)
+                              dm[v]=mindm;
+                              maxlevel=max(maxlevel,dm[v]);
+                              level[dm[v]].push_back(v);
+                              active[v]=1;
 
-                              //e noch im Residualgraph?
-                              if((dm[v]==dm[w]+1) && residualback[e]>0)
+                              //legal edges aktualisieren
+                              //alte Kanten könnten nicht mehr erlaubt sein
+                              legaledges[v].clear();
+
+                              for(int i=0;i!=g.get_node(v).out_edges().size();i++)
                               {
-                                    legaledges[v].push_back(e);
-                                    backwards[e]=1; //e ist Rückkante
+                                    Graph::EdgeId e=g.get_node(v).out_edges()[i];
+                                    Graph::NodeId w=g.get_edge(e).get_head();
+
+                                    for(int j=0;j<legaledges[w].size();j++)
+                                    {
+                                          if(legaledges[w][j]==e && dm[w]!=dm[v]+1)
+                                          {
+                                                legaledges[w].erase(legaledges[w].begin()+j);
+                                                j--;
+                                          }
+
+                                    }
+
+                                    //e noch im Residualgraph?
+                                    if((dm[v]==dm[w]+1) && (g._weight[e]-flow[e]>0))
+                                          legaledges[v].push_back(e);
+                              }
+
+                              for(int i=0;i!=g.get_node(v).in_edges().size();i++)
+                              {
+                                    Graph::EdgeId e=g.get_node(v).in_edges()[i];
+                                    Graph::NodeId w=g.get_edge(e).get_tail();
+
+                                    for(int j=0;j<legaledges[w].size();j++)
+                                    {
+                                          if(legaledges[w][j]==e && dm[w]!=dm[v]+1)
+                                          {
+                                                legaledges[w].erase(legaledges[w].begin()+j);
+                                                j--;
+                                          }
+
+                                    }
+
+                                    //e noch im Residualgraph?
+                                    if((dm[v]==dm[w]+1) && flow[e]>0)
+                                          legaledges[v].push_back(e);
                               }
                         }
                   }
-
                   while(level[maxlevel].empty() && maxlevel>0)
                         maxlevel--;            
             }
 
       //Output
       stringstream output;
-      int sum=0;
+      int sum=0,sum2=0;
       for(int i=0;i<g.num_edges();i++)
             if(flow[i]>0)
             {
-                  if(g.get_edge(i).get_tail()==0)
+                  if(g.get_edge(i).get_head()==1)
                         sum+=flow[i];
+                  if(g.get_edge(i).get_tail()==0)
+                        sum2+=flow[i];
                   output << i << " " << flow[i] << "\n";
             }
-      cout << sum << " " << g.num_edges() << "\n" ;
+      cout << sum << " " << sum2 << "\n" ;
       }
       return 0;
 }
